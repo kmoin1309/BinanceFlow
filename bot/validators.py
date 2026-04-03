@@ -2,14 +2,14 @@
 Input validators for the Trading Bot CLI.
 
 Provides reusable validation functions for all user-supplied
-parameters: symbol, side, order type, quantity, and price.
+parameters: symbol, side, order type, quantity, price, and stop price.
 """
 
 from typing import Optional, Tuple
 
 # ── Valid values ─────────────────────────────────────────────
 VALID_SIDES = ("BUY", "SELL")
-VALID_ORDER_TYPES = ("MARKET", "LIMIT")
+VALID_ORDER_TYPES = ("MARKET", "LIMIT", "STOP_LIMIT")
 
 
 def validate_symbol(symbol: str) -> str:
@@ -71,10 +71,10 @@ def validate_order_type(order_type: str) -> str:
         order_type: Raw user input for order type.
 
     Returns:
-        Uppercase order type string ('MARKET' or 'LIMIT').
+        Uppercase order type string ('MARKET', 'LIMIT', or 'STOP_LIMIT').
 
     Raises:
-        ValueError: If order type is not MARKET or LIMIT.
+        ValueError: If order type is not valid.
     """
     if not order_type or not order_type.strip():
         raise ValueError("Order type cannot be empty.")
@@ -120,20 +120,17 @@ def validate_price(price: Optional[str], order_type: str) -> Optional[float]:
         order_type: Already-validated order type.
 
     Returns:
-        Positive float for LIMIT orders, None for MARKET orders.
+        Positive float for LIMIT/STOP_LIMIT orders, None for MARKET orders.
 
     Raises:
-        ValueError: If price is missing for LIMIT orders or not a valid positive number.
+        ValueError: If price is missing for LIMIT/STOP_LIMIT orders or not a valid positive number.
     """
     if order_type.upper() == "MARKET":
-        if price is not None:
-            # Warn but don't fail — MARKET orders ignore price
-            pass
         return None
 
-    # LIMIT order requires price
+    # LIMIT and STOP_LIMIT orders require price
     if price is None:
-        raise ValueError("Price is required for LIMIT orders.")
+        raise ValueError(f"Price is required for {order_type} orders.")
 
     try:
         p = float(price)
@@ -146,25 +143,58 @@ def validate_price(price: Optional[str], order_type: str) -> Optional[float]:
     return p
 
 
+def validate_stop_price(stop_price: Optional[str], order_type: str) -> Optional[float]:
+    """
+    Validate the stop/trigger price for STOP_LIMIT orders.
+
+    Args:
+        stop_price: Raw user input for stop price.
+        order_type: Already-validated order type.
+
+    Returns:
+        Positive float for STOP_LIMIT orders, None otherwise.
+
+    Raises:
+        ValueError: If stop price is missing for STOP_LIMIT or invalid.
+    """
+    if order_type.upper() != "STOP_LIMIT":
+        return None
+
+    if stop_price is None:
+        raise ValueError("Stop price is required for STOP_LIMIT orders.")
+
+    try:
+        sp = float(stop_price)
+    except (ValueError, TypeError):
+        raise ValueError(f"Invalid stop price '{stop_price}' — must be a number.")
+
+    if sp <= 0:
+        raise ValueError(f"Stop price must be positive, got {sp}.")
+
+    return sp
+
+
 def validate_all(
     symbol: str,
     side: str,
     order_type: str,
     quantity: str,
     price: Optional[str] = None,
-) -> Tuple[str, str, str, float, Optional[float]]:
+    stop_price: Optional[str] = None,
+) -> Tuple[str, str, str, float, Optional[float], Optional[float]]:
     """
     Validate all order parameters at once.
 
     Args:
         symbol: Trading pair (e.g., 'BTCUSDT').
         side: Order side ('BUY' or 'SELL').
-        order_type: Order type ('MARKET' or 'LIMIT').
+        order_type: Order type ('MARKET', 'LIMIT', or 'STOP_LIMIT').
         quantity: Order quantity as string.
-        price: Order price as string (required for LIMIT).
+        price: Order price as string (required for LIMIT/STOP_LIMIT).
+        stop_price: Stop trigger price (required for STOP_LIMIT).
 
     Returns:
-        Tuple of validated (symbol, side, order_type, quantity, price).
+        Tuple of validated (symbol, side, order_type, quantity, price, stop_price).
 
     Raises:
         ValueError: If any parameter fails validation.
@@ -174,5 +204,6 @@ def validate_all(
     v_type = validate_order_type(order_type)
     v_qty = validate_quantity(quantity)
     v_price = validate_price(price, v_type)
+    v_stop = validate_stop_price(stop_price, v_type)
 
-    return v_symbol, v_side, v_type, v_qty, v_price
+    return v_symbol, v_side, v_type, v_qty, v_price, v_stop

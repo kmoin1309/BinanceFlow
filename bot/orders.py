@@ -14,16 +14,20 @@ from bot.validators import validate_all
 logger = setup_logger("orders")
 
 
-def format_order_summary(symbol: str, side: str, order_type: str, quantity: float, price: Optional[float]) -> str:
+def format_order_summary(
+    symbol: str, side: str, order_type: str, quantity: float,
+    price: Optional[float], stop_price: Optional[float] = None
+) -> str:
     """
     Format a human-readable order request summary.
 
     Args:
         symbol: Trading pair.
         side: BUY or SELL.
-        order_type: MARKET or LIMIT.
+        order_type: MARKET, LIMIT, or STOP_LIMIT.
         quantity: Order quantity.
         price: Limit price or None.
+        stop_price: Stop trigger price or None.
 
     Returns:
         Formatted summary string.
@@ -40,6 +44,8 @@ def format_order_summary(symbol: str, side: str, order_type: str, quantity: floa
     ]
     if price is not None:
         lines.append(f"│  Price      : {price:<25} │")
+    if stop_price is not None:
+        lines.append(f"│  Stop Price : {stop_price:<25} │")
     lines.append("└─────────────────────────────────────────┘")
     lines.append("")
 
@@ -63,6 +69,7 @@ def format_order_response(response: Dict[str, Any]) -> str:
     order_type = response.get("type", "N/A")
     side = response.get("side", "N/A")
     symbol = response.get("symbol", "N/A")
+    stop_price = response.get("stopPrice", None)
 
     lines = [
         "",
@@ -76,9 +83,11 @@ def format_order_response(response: Dict[str, Any]) -> str:
         f"│  Status     : {str(status):<25} │",
         f"│  Exec. Qty  : {str(executed_qty):<25} │",
         f"│  Avg. Price : {str(avg_price):<25} │",
-        "└─────────────────────────────────────────┘",
-        "",
     ]
+    if stop_price and stop_price != "0":
+        lines.append(f"│  Stop Price : {str(stop_price):<25} │")
+    lines.append("└─────────────────────────────────────────┘")
+    lines.append("")
 
     return "\n".join(lines)
 
@@ -90,6 +99,7 @@ def place_order(
     order_type: str,
     quantity: str,
     price: Optional[str] = None,
+    stop_price: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Validate inputs, place an order, and print formatted results.
@@ -101,9 +111,10 @@ def place_order(
         client: Initialized BinanceTestnetClient instance.
         symbol: Trading pair (e.g., 'BTCUSDT').
         side: Order side ('BUY' or 'SELL').
-        order_type: Order type ('MARKET' or 'LIMIT').
+        order_type: Order type ('MARKET', 'LIMIT', or 'STOP_LIMIT').
         quantity: Order quantity as string.
-        price: Order price as string (required for LIMIT).
+        price: Order price as string (required for LIMIT/STOP_LIMIT).
+        stop_price: Stop trigger price as string (required for STOP_LIMIT).
 
     Returns:
         API response dictionary.
@@ -113,12 +124,17 @@ def place_order(
         requests.exceptions.RequestException: On API/network errors.
     """
     # ── Step 1: Validate all inputs ──────────────────────────
-    v_symbol, v_side, v_type, v_qty, v_price = validate_all(symbol, side, order_type, quantity, price)
+    v_symbol, v_side, v_type, v_qty, v_price, v_stop = validate_all(
+        symbol, side, order_type, quantity, price, stop_price
+    )
 
     # ── Step 2: Print order summary ──────────────────────────
-    summary = format_order_summary(v_symbol, v_side, v_type, v_qty, v_price)
+    summary = format_order_summary(v_symbol, v_side, v_type, v_qty, v_price, v_stop)
     print(summary)
-    logger.info("Order request: %s %s %s qty=%.6f price=%s", v_symbol, v_side, v_type, v_qty, v_price)
+    logger.info(
+        "Order request: %s %s %s qty=%.6f price=%s stop=%s",
+        v_symbol, v_side, v_type, v_qty, v_price, v_stop,
+    )
 
     # ── Step 3: Place the order ──────────────────────────────
     response = client.place_order(
@@ -127,6 +143,7 @@ def place_order(
         order_type=v_type,
         quantity=v_qty,
         price=v_price,
+        stop_price=v_stop,
     )
 
     # ── Step 4: Print response details ───────────────────────

@@ -175,6 +175,7 @@ class BinanceTestnetClient:
         order_type: str,
         quantity: float,
         price: Optional[float] = None,
+        stop_price: Optional[float] = None,
         time_in_force: str = "GTC",
     ) -> Dict[str, Any]:
         """
@@ -183,10 +184,11 @@ class BinanceTestnetClient:
         Args:
             symbol: Trading pair (e.g., 'BTCUSDT').
             side: Order side — 'BUY' or 'SELL'.
-            order_type: Order type — 'MARKET' or 'LIMIT'.
+            order_type: Order type — 'MARKET', 'LIMIT', or 'STOP'.
             quantity: Order quantity.
-            price: Limit price (required for LIMIT orders).
-            time_in_force: Time-in-force policy (default 'GTC' for LIMIT).
+            price: Limit price (required for LIMIT and STOP orders).
+            stop_price: Stop/trigger price (required for STOP orders).
+            time_in_force: Time-in-force policy (default 'GTC' for LIMIT/STOP).
 
         Returns:
             API response dictionary with order details.
@@ -195,26 +197,36 @@ class BinanceTestnetClient:
             ValueError: If required parameters are missing for the order type.
             requests.exceptions.RequestException: On API/network errors.
         """
+        # Binance API uses "STOP" for stop-limit orders on futures
+        api_type = "STOP" if order_type.upper() == "STOP_LIMIT" else order_type.upper()
+
         params: Dict[str, Any] = {
             "symbol": symbol.upper(),
             "side": side.upper(),
-            "type": order_type.upper(),
+            "type": api_type,
             "quantity": quantity,
         }
 
-        if order_type.upper() == "LIMIT":
+        if order_type.upper() in ("LIMIT", "STOP_LIMIT"):
             if price is None:
-                raise ValueError("Price is required for LIMIT orders.")
+                raise ValueError(f"Price is required for {order_type} orders.")
             params["price"] = price
             params["timeInForce"] = time_in_force
 
+        if order_type.upper() == "STOP_LIMIT":
+            if stop_price is None:
+                raise ValueError("Stop price is required for STOP_LIMIT orders.")
+            params["stopPrice"] = stop_price
+
+        stop_info = f" stopPrice={stop_price}" if stop_price else ""
         self.logger.info(
-            "Placing %s %s order: %s qty=%.6f%s",
+            "Placing %s %s order: %s qty=%.6f%s%s",
             side.upper(),
             order_type.upper(),
             symbol.upper(),
             quantity,
             f" @ {price}" if price else "",
+            stop_info,
         )
 
         response = self._request("POST", "/fapi/v1/order", params=params, signed=True)

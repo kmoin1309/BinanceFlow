@@ -8,11 +8,17 @@ via a clean command-line interface.
 Usage:
     python cli.py --symbol BTCUSDT --side BUY --type MARKET --quantity 0.01
     python cli.py --symbol ETHUSDT --side SELL --type LIMIT --quantity 0.5 --price 2000
+    python cli.py --symbol BTCUSDT --side SELL --type STOP_LIMIT --quantity 0.01 --price 80000 --stop-price 82000
 """
 
 import argparse
 import os
 import sys
+
+from dotenv import load_dotenv
+
+# Load .env file if present (before any env reads)
+load_dotenv()
 
 from bot.client import BinanceTestnetClient
 from bot.logging_config import setup_logger
@@ -38,7 +44,11 @@ def get_api_credentials() -> tuple:
         print(
             "\n❌ Error: API credentials not found.\n"
             "\n"
-            "Please set the following environment variables:\n"
+            "Option 1 — Create a .env file (recommended):\n"
+            "  cp .env.example .env\n"
+            "  # Edit .env with your keys\n"
+            "\n"
+            "Option 2 — Export environment variables:\n"
             "  export BINANCE_TESTNET_API_KEY='your_api_key'\n"
             "  export BINANCE_TESTNET_API_SECRET='your_api_secret'\n"
             "\n"
@@ -60,8 +70,9 @@ def build_parser() -> argparse.ArgumentParser:
             "Examples:\n"
             "  %(prog)s --symbol BTCUSDT --side BUY --type MARKET --quantity 0.01\n"
             "  %(prog)s --symbol ETHUSDT --side SELL --type LIMIT --quantity 0.5 --price 2000\n"
+            "  %(prog)s --symbol BTCUSDT --side SELL --type STOP_LIMIT --quantity 0.01 --price 80000 --stop-price 82000\n"
             "\n"
-            "Environment Variables:\n"
+            "Environment Variables (or use .env file):\n"
             "  BINANCE_TESTNET_API_KEY       Your Binance Futures Testnet API key\n"
             "  BINANCE_TESTNET_API_SECRET    Your Binance Futures Testnet API secret\n"
         ),
@@ -82,8 +93,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--type",
         required=True,
         dest="order_type",
-        choices=["MARKET", "LIMIT", "market", "limit"],
-        help="Order type: MARKET or LIMIT",
+        choices=["MARKET", "LIMIT", "STOP_LIMIT", "market", "limit", "stop_limit"],
+        help="Order type: MARKET, LIMIT, or STOP_LIMIT (bonus)",
     )
     parser.add_argument(
         "--quantity",
@@ -93,7 +104,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--price",
         default=None,
-        help="Limit price (required for LIMIT orders)",
+        help="Limit price (required for LIMIT and STOP_LIMIT orders)",
+    )
+    parser.add_argument(
+        "--stop-price",
+        default=None,
+        dest="stop_price",
+        help="Stop/trigger price (required for STOP_LIMIT orders)",
     )
 
     return parser
@@ -132,6 +149,7 @@ def main():
             order_type=args.order_type,
             quantity=args.quantity,
             price=args.price,
+            stop_price=args.stop_price,
         )
     except ValueError as e:
         print(f"\n❌ Validation Error: {e}")
